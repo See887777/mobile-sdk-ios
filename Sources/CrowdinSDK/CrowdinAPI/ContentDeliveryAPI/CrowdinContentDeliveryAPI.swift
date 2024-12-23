@@ -8,6 +8,7 @@
 import Foundation
 import BaseAPI
 
+typealias CrowdinAPIFileDataCompletion = ((Data?, String?, Error?) -> Void)
 typealias CrowdinAPIStringsCompletion = (([String: String]?, String?, Error?) -> Void)
 typealias CrowdinAPIPluralsCompletion = (([AnyHashable: Any]?, String?, Error?) -> Void)
 typealias CrowdinAPIXliffCompletion = (([AnyHashable: Any]?, String?, Error?) -> Void)
@@ -18,12 +19,6 @@ typealias CrowdinAPIXliffMappingCompletion = (([AnyHashable: Any]?, Error?) -> V
 typealias CrowdinAPIManifestCompletion = ((ManifestResponse?, String?, Error?) -> Void)
 
 class CrowdinContentDeliveryAPI: BaseAPI {
-    enum FileType: String {
-        case content
-        case mapping
-        case manifest
-    }
-    
     fileprivate enum Strings: String {
         case etag = "Etag"
         case ifNoneMatch = "If-None-Match"
@@ -32,8 +27,6 @@ class CrowdinContentDeliveryAPI: BaseAPI {
     private typealias CrowdinAPIDataCompletion = ((Data?, URLResponse?, Error?) -> Void)
     
     private let hash: String
-//    private let baseURL = "https://crowdin-distribution.s3.us-east-1.amazonaws.com"
-//    private let baseURL = "https://production-enterprise-distribution.s3.us-east-1.amazonaws.com"
     private let baseURL = "https://distributions.crowdin.net"
     
     init(hash: String, session: URLSession) {
@@ -46,22 +39,26 @@ class CrowdinContentDeliveryAPI: BaseAPI {
         super.init(session: URLSession.shared)
     }
     
-    private func buildURL(fileType: FileType, filePath: String, timestamp: TimeInterval?) -> String {
+    private func manifestURL() -> String {
+        "\(baseURL)/\(hash)/manifest.json"
+    }
+    
+    private func buildURL(filePath: String, timestamp: TimeInterval?) -> String {
         if let timestamp = timestamp {
-            return "\(baseURL)/\(hash)/\(fileType.rawValue)\(filePath)?timestamp=\(String(timestamp))"
+            return "\(baseURL)/\(hash)\(filePath)?timestamp=\(String(timestamp))"
         } else {
-            return "\(baseURL)/\(hash)/\(fileType.rawValue)\(filePath)"
+            return "\(baseURL)/\(hash)\(filePath)"
         }
     }
     
     // MARK - General download methods
-    private func getFile(fileType: FileType, filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIDataCompletion) {
-        let stringURL = buildURL(fileType: fileType, filePath: filePath, timestamp: timestamp)
+    private func getFile(filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIDataCompletion) {
+        let stringURL = buildURL(filePath: filePath, timestamp: timestamp)
         var headers: [String: String] = [:]
         if let etag = etag {
             headers = [Strings.ifNoneMatch.rawValue: etag]
         }
-        super.get(url: stringURL, headers: headers) { data, response, error in
+        super.get(url: stringURL, headers: headers, callbackQueue: .global()) { data, response, error in
             completion(data, response, error)
             CrowdinAPILog.logRequest(
                 method: RequestMethod.GET.rawValue,
@@ -77,7 +74,7 @@ class CrowdinContentDeliveryAPI: BaseAPI {
     
     // MARK - Localization download methods:
     func getStrings(filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIStringsCompletion) {
-        self.getFile(fileType: .content, filePath: filePath, etag: etag, timestamp: timestamp) { (data, response, error) in
+        self.getFile(filePath: filePath, etag: etag, timestamp: timestamp) { (data, response, error) in
             let etag = (response as? HTTPURLResponse)?.allHeaderFields[Strings.etag.rawValue] as? String
             if let data = data {
                 guard let dictionary = PropertyListDataParser.parse(data: data) else {
@@ -91,8 +88,20 @@ class CrowdinContentDeliveryAPI: BaseAPI {
         }
     }
     
+    // MARK - Localization download methods:
+    func getFileData(filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIFileDataCompletion) {
+        self.getFile(filePath: filePath, etag: etag, timestamp: timestamp) { (data, response, error) in
+            let etag = (response as? HTTPURLResponse)?.allHeaderFields[Strings.etag.rawValue] as? String
+            if let data {
+                completion(data, etag, nil)
+            } else {
+                completion(nil, etag, error)
+            }
+        }
+    }
+    
     func getPlurals(filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIPluralsCompletion) {
-        self.getFile(fileType: .content, filePath: filePath, etag: etag, timestamp: timestamp) { (data, response, error) in
+        self.getFile(filePath: filePath, etag: etag, timestamp: timestamp) { (data, response, error) in
             let etag = (response as? HTTPURLResponse)?.allHeaderFields[Strings.etag.rawValue] as? String
             if let data = data {
                 guard let dictionary = PropertyListDataParser.parse(data: data) else {
@@ -107,7 +116,7 @@ class CrowdinContentDeliveryAPI: BaseAPI {
     }
     
     func getXliff(filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIXliffCompletion) {
-        self.getFile(fileType: .content, filePath: filePath, etag: etag, timestamp: timestamp) { (data, response, error) in
+        self.getFile(filePath: filePath, etag: etag, timestamp: timestamp) { (data, response, error) in
             let etag = (response as? HTTPURLResponse)?.allHeaderFields[Strings.etag.rawValue] as? String
             if let data = data {
                 guard let dictionary = XLIFFDataParser.parse(data: data) else {
@@ -121,24 +130,9 @@ class CrowdinContentDeliveryAPI: BaseAPI {
         }
     }
     
-    func getJson(filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIStringsCompletion) {
-        self.getFile(fileType: .content, filePath: filePath, etag: etag, timestamp: timestamp) { (data, response, error) in
-            let etag = (response as? HTTPURLResponse)?.allHeaderFields[Strings.etag.rawValue] as? String
-            if let data = data {
-                guard let strings = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) as? [String: String] else {
-                    completion(nil, etag, error)
-                    return
-                }
-                completion(strings, etag, nil)
-            } else {
-                completion(nil, etag, error)
-            }
-        }
-    }
-    
     // MARK - Mapping download methods:
     func getStringsMapping(filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIStringsMappingCompletion) {
-        self.getFile(fileType: .mapping, filePath: filePath, etag: etag, timestamp: timestamp) { (data, _, error) in
+        self.getFile(filePath: filePath, etag: etag, timestamp: timestamp) { (data, _, error) in
             if let data = data {
                 guard let dictionary = PropertyListDataParser.parse(data: data) else {
                     completion(nil, error)
@@ -152,7 +146,7 @@ class CrowdinContentDeliveryAPI: BaseAPI {
     }
     
     func getPluralsMapping(filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIPluralsMappingCompletion) {
-        self.getFile(fileType: .mapping, filePath: filePath, etag: etag, timestamp: timestamp) { (data, _, error) in
+        self.getFile(filePath: filePath, etag: etag, timestamp: timestamp) { (data, _, error) in
             if let data = data {
                 guard let dictionary = PropertyListDataParser.parse(data: data) else {
                     completion(nil, error)
@@ -166,7 +160,7 @@ class CrowdinContentDeliveryAPI: BaseAPI {
     }
     
     func getXliffMapping(filePath: String, etag: String?, timestamp: TimeInterval?, completion: @escaping CrowdinAPIXliffMappingCompletion) {
-        self.getFile(fileType: .mapping, filePath: filePath, etag: etag, timestamp: timestamp) { (data, _, error) in
+        self.getFile(filePath: filePath, etag: etag, timestamp: timestamp) { (data, _, error) in
             if let data = data {
                 guard let dictionary = XLIFFDataParser.parse(data: data) else {
                     completion(nil, error)
@@ -180,8 +174,8 @@ class CrowdinContentDeliveryAPI: BaseAPI {
     }
     
     func getManifest(completion: @escaping CrowdinAPIManifestCompletion) {
-        let stringURL = buildURL(fileType: .manifest, filePath: ".json", timestamp: nil)
-        super.get(url: stringURL) { [weak self] (data, _, error) in
+        let stringURL = manifestURL()
+        super.get(url: stringURL, callbackQueue: .global()) { [weak self] (data, _, error) in
             guard self != nil else { return }
             if let data = data {
                 do {
@@ -197,7 +191,7 @@ class CrowdinContentDeliveryAPI: BaseAPI {
     }
     
     func getManifestSync() -> (response: ManifestResponse?, error: Error?) {
-        let stringURL = buildURL(fileType: .manifest, filePath: ".json", timestamp: nil)
+        let stringURL = manifestURL()
         let result = super.get(url: stringURL)
         if let data = result.data {
             do {

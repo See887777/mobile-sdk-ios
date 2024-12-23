@@ -20,7 +20,7 @@ protocol RealtimeUpdateFeatureProtocol {
     var disconnect: (() -> Void)? { get set }
     var enabled: Bool { get set }
     
-	init(hash: String, sourceLanguage: String, organizationName: String?)
+	init(hash: String, sourceLanguage: String, organizationName: String?, loginFeature: AnyLoginFeature?)
     
     func start()
     func stop()
@@ -40,6 +40,7 @@ class RealtimeUpdateFeature: RealtimeUpdateFeatureProtocol {
         return CrowdinSDK.currentLocalization ?? Bundle.main.preferredLanguage(with: localizations)
     }
     var hashString: String
+    let sourceLanguage: String
     let organizationName: String?
 	
 	var distributionResponse: DistributionsResponse? = nil
@@ -57,15 +58,18 @@ class RealtimeUpdateFeature: RealtimeUpdateFeatureProtocol {
     private var controls = NSHashTable<AnyObject>.weakObjects()
     private var socketManger: CrowdinSocketManagerProtocol?
     private var mappingManager: CrowdinMappingManagerProtocol
+    private let loginFeature: AnyLoginFeature?
     
-    required init(hash: String, sourceLanguage: String, organizationName: String? = nil) {
+    required init(hash: String, sourceLanguage: String, organizationName: String?, loginFeature: AnyLoginFeature?) {
         self.hashString = hash
+        self.sourceLanguage = sourceLanguage
 		self.organizationName = organizationName
-        self.mappingManager = CrowdinMappingManager(hash: hash, sourceLanguage: sourceLanguage)
+        self.loginFeature = loginFeature
+        self.mappingManager = CrowdinMappingManager(hash: hash, sourceLanguage: sourceLanguage, organizationName: organizationName)
     }
 	
     func downloadDistribution(with successHandler: (() -> Void)? = nil, errorHandler: ((Error) -> Void)? = nil) {
-        let distributionsAPI = DistributionsAPI(hashString: self.hashString, organizationName: organizationName, auth: LoginFeature.shared)
+        let distributionsAPI = DistributionsAPI(hashString: self.hashString, organizationName: organizationName, auth: loginFeature)
 		distributionsAPI.getDistribution { (response, error) in
             if let response = response {
                 self.distributionResponse = response
@@ -96,13 +100,15 @@ class RealtimeUpdateFeature: RealtimeUpdateFeatureProtocol {
             self.error?(NSError(domain: message, code: defaultCrowdinErrorCode, userInfo: nil))
             return
         }
-        if LoginFeature.isLogined {
-            _start()
-        } else if let loginFeature = LoginFeature.shared {
-            loginFeature.login(completion: {
-                self.start()
-            }) { err in
-                self.error?(err)
+        if let loginFeature {
+            if loginFeature.isLogined {
+                _start()
+            } else {
+                loginFeature.login(completion: {
+                    self.start()
+                }) { err in
+                    self.error?(err)
+                }
             }
         } else {
             error?(NSError(domain: "Login feature is not configured properly", code: defaultCrowdinErrorCode, userInfo: nil))
@@ -134,7 +140,7 @@ class RealtimeUpdateFeature: RealtimeUpdateFeatureProtocol {
     
     func setupRealtimeUpdatesLocalizationProvider(with projectId: String, completion: @escaping () -> Void) {
         oldProvider = Localization.current.provider
-        Localization.current.provider = LocalizationProvider(localization: self.localization, localStorage: RULocalLocalizationStorage(localization: self.localization), remoteStorage: RURemoteLocalizationStorage(localization: self.localization, hash: self.hashString, projectId: projectId, organizationName: self.organizationName))
+        Localization.current.provider = LocalizationProvider(localization: self.localization, localStorage: RULocalLocalizationStorage(localization: self.localization), remoteStorage: RURemoteLocalizationStorage(localization: self.localization, sourceLanguage: sourceLanguage, hash: self.hashString, projectId: projectId, organizationName: self.organizationName))
         
         Localization.current.provider.refreshLocalization { [weak self] error in
             guard let self = self else { return }
@@ -163,7 +169,7 @@ class RealtimeUpdateFeature: RealtimeUpdateFeatureProtocol {
     
     func setupSocketManager(with projectId: String, projectWsHash: String, userId: String, wsUrl: String) {
         // Download manifest if it is not initialized.
-        let manifestManager = ManifestManager.manifest(for: hashString)
+        let manifestManager = ManifestManager.manifest(for: hashString, sourceLanguage: sourceLanguage, organizationName: organizationName)
         guard manifestManager.downloaded else {
             manifestManager.download { [weak self] in
                 guard let self = self else { return }
@@ -212,7 +218,7 @@ extension RealtimeUpdateFeature {
     
     func subscribeAllVisibleConrols() {
 #if os(iOS) || os(tvOS) || os(macOS)
-        Application.shared.windows.forEach({
+        CWApplication.shared.windows.forEach({
 #if os(macOS)
             if let view = $0.contentView {
                 subscribeAllControls(from: view)
@@ -224,7 +230,7 @@ extension RealtimeUpdateFeature {
 #endif
     }
     
-    func subscribeAllControls(from view: View) {
+    func subscribeAllControls(from view: CWView) {
 #if os(iOS) || os(tvOS) || os(macOS)
         view.subviews.forEach { (subview) in
             if let refreshable = subview as? Refreshable {

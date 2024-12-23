@@ -16,10 +16,10 @@ class CrowdinMappingDownloader: CrowdinDownloaderProtocol {
     fileprivate var errors: [Error]? = nil
     //swiftlint:disable implicitly_unwrapped_optional
     fileprivate var contentDeliveryAPI: CrowdinContentDeliveryAPI!
-    fileprivate let languageResolver: LanguageResolver
+    fileprivate let manifestManager: ManifestManager
     
-    init(languageResolver: LanguageResolver) {
-        self.languageResolver = languageResolver
+    init(manifestManager: ManifestManager) {
+        self.manifestManager = manifestManager
     }
     
     func download(with hash: String, for localization: String, completion: @escaping CrowdinDownloaderCompletion) {
@@ -45,44 +45,39 @@ class CrowdinMappingDownloader: CrowdinDownloaderProtocol {
         self.plurals = nil
         self.errors = nil
         
-        let pathParser = CrowdinPathsParser(languageResolver: languageResolver)
-        
         let completionBlock = BlockOperation {
             self.completion?(self.strings, self.plurals, self.errors)
         }
         
-        xliffs.forEach { (xliff) in
-            let filePath = pathParser.parse(xliff, localization: localization)
+        xliffs.forEach { filePath in
             let download = CrowdinXliffMappingDownloadOperation(filePath: filePath, contentDeliveryAPI: contentDeliveryAPI, completion: { (strings, plurals, error) in
                 self.add(error: error)
                 self.add(strings: strings)
                 self.add(plurals: plurals)
                 
-                self.log(localization: localization, string: xliff, filePath: filePath, error: error)
+                self.log(localization: localization, string: filePath, filePath: filePath, error: error)
             })
             completionBlock.addDependency(download)
             operationQueue.addOperation(download)
         }
         
-        strings.forEach { (string) in
-            let filePath = pathParser.parse(string, localization: localization)
+        strings.forEach { filePath in
             let download = CrowdinStringsMappingDownloadOperation(filePath: filePath, contentDeliveryAPI: contentDeliveryAPI, completion: { (strings, error) in
                 self.add(error: error)
                 self.add(strings: strings)
                 
-                self.log(localization: localization, string: string, filePath: filePath, error: error)
+                self.log(localization: localization, string: filePath, filePath: filePath, error: error)
             })
             completionBlock.addDependency(download)
             operationQueue.addOperation(download)
         }
         
-        plurals.forEach { (plural) in
-            let filePath = pathParser.parse(plural, localization: localization)
+        plurals.forEach { filePath in
             let download = CrowdinPluralsMappingDownloadOperation(filePath: filePath, contentDeliveryAPI: contentDeliveryAPI, completion: { (plurals, error) in
                 self.add(error: error)
                 self.add(plurals: plurals)
                 
-                self.log(localization: localization, string: plural, filePath: filePath, error: error)
+                self.log(localization: localization, string: filePath, filePath: filePath, error: error)
             })
             completionBlock.addDependency(download)
             operationQueue.addOperation(download)
@@ -91,9 +86,9 @@ class CrowdinMappingDownloader: CrowdinDownloaderProtocol {
     }
     
     func getFiles(for hash: String, completion: @escaping ([String]?, TimeInterval?, String?, Error?) -> Void) {
-        let manifestManager = ManifestManager.manifest(for: hash)
-        manifestManager.download {
-            completion(manifestManager.files, manifestManager.timestamp, manifestManager.manifestURL, nil)
+        manifestManager.download { [weak self] in
+            guard let self = self else { return }
+            completion(self.manifestManager.mappingFiles, self.manifestManager.timestamp, self.manifestManager.manifestURL, nil)
         }
     }
     

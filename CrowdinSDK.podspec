@@ -8,7 +8,7 @@
 
 Pod::Spec.new do |spec|
   spec.name             = 'CrowdinSDK'
-  spec.version          = '1.5.2'
+  spec.version          = '1.10.1'
   spec.summary          = 'Crowdin iOS SDK delivers all new translations from Crowdin project to the application immediately'
   
   spec.description      = <<-DESC
@@ -29,9 +29,9 @@ Pod::Spec.new do |spec|
   spec.source           = { :git => 'https://github.com/crowdin/mobile-sdk-ios.git', :tag => spec.version.to_s }
   spec.social_media_url    = 'https://twitter.com/crowdin'
   
-  spec.watchos.deployment_target = '2.0'
-  spec.ios.deployment_target = '11.0'
-  spec.tvos.deployment_target = '11.0'
+  spec.watchos.deployment_target = '4.0'
+  spec.ios.deployment_target = '12.0'
+  spec.tvos.deployment_target = '12.0'
   spec.macos.deployment_target = '10.13'
   
   spec.ios.frameworks = 'UIKit'
@@ -48,16 +48,11 @@ Pod::Spec.new do |spec|
     core.dependency 'CrowdinSDK/CrowdinFileSystem'
   end
   
-  spec.subspec 'CrowdinFileSystem' do |core|
-    core.source_files = 'Sources/CrowdinSDK/CrowdinFileSystem/**/*'
+  spec.subspec 'CrowdinFileSystem' do |subspec|
+    subspec.source_files = 'Sources/CrowdinSDK/CrowdinFileSystem/**/*'
   end
 
   spec.test_spec 'Core_Tests' do |test_spec|
-    test_spec.watchos.deployment_target = '2.0'
-    test_spec.ios.deployment_target = '11.0'
-    test_spec.tvos.deployment_target = '11.0'
-    test_spec.macos.deployment_target = '10.13'
-    
     test_spec.source_files = 'Sources/Tests/Core/*.swift'
   end
   
@@ -70,11 +65,6 @@ Pod::Spec.new do |spec|
   end
   
   spec.test_spec 'CrowdinProvider_Tests' do |test_spec|
-    test_spec.watchos.deployment_target = '2.0'
-    test_spec.ios.deployment_target = '11.0'
-    test_spec.tvos.deployment_target = '11.0'
-    test_spec.macos.deployment_target = '10.13'
-    
     test_spec.source_files = 'Sources/Tests/CrowdinProvider/*.swift'
     test_spec.resources = 'Resources/Tests/SupportedLanguages.json'
   end
@@ -83,15 +73,10 @@ Pod::Spec.new do |spec|
     subspec.name = 'CrowdinAPI'
     subspec.source_files = 'Sources/CrowdinSDK/CrowdinAPI/**/*.swift'
     subspec.dependency 'CrowdinSDK/Core'
-    subspec.dependency 'BaseAPI', '~> 0.2.1'
+    subspec.dependency 'BaseAPI', '~> 0.2.2'
   end
   
   spec.test_spec 'CrowdinAPI_Tests' do |test_spec|
-    test_spec.watchos.deployment_target = '2.0'
-    test_spec.ios.deployment_target = '11.0'
-    test_spec.tvos.deployment_target = '11.0'
-    test_spec.macos.deployment_target = '10.13'
-    
     test_spec.source_files = 'Sources/Tests/CrowdinAPI/*.swift'
   end
   
@@ -102,6 +87,7 @@ Pod::Spec.new do |spec|
     feature.dependency 'CrowdinSDK/CrowdinProvider'
     feature.dependency 'CrowdinSDK/CrowdinAPI'
     feature.dependency 'CrowdinSDK/LoginFeature'
+    
   end
   
   spec.subspec 'RealtimeUpdate' do |feature|
@@ -129,7 +115,7 @@ Pod::Spec.new do |spec|
     feature.dependency 'CrowdinSDK/Core'
     feature.dependency 'CrowdinSDK/CrowdinProvider'
     feature.dependency 'CrowdinSDK/CrowdinAPI'
-    feature.dependency 'BaseAPI', '~> 0.2.1'
+    feature.dependency 'BaseAPI', '~> 0.2.2'
   end
   
   spec.subspec 'IntervalUpdate' do |feature|
@@ -152,6 +138,16 @@ Pod::Spec.new do |spec|
     settings.dependency 'CrowdinSDK/CrowdinProvider'
     settings.dependency 'CrowdinSDK/CrowdinAPI'
     settings.dependency 'CrowdinSDK/LoginFeature'
+  end
+
+  spec.subspec 'CrowdinXCTestScreenshots' do |feature|
+    feature.name = 'CrowdinXCTestScreenshots'
+    feature.ios.source_files = 'Sources/CrowdinSDK/Features/XCTestScreenshotFeature/*.swift'
+    feature.dependency 'CrowdinSDK/Core'
+    feature.dependency 'CrowdinSDK/CrowdinProvider'
+    feature.dependency 'CrowdinSDK/CrowdinAPI'
+    feature.dependency 'CrowdinSDK/Screenshots'
+    feature.ios.frameworks = 'XCTest'
   end
 
 end

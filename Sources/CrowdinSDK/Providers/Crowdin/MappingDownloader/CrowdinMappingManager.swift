@@ -24,10 +24,12 @@ public class CrowdinMappingManager: CrowdinMappingManagerProtocol {
     var pluralsMapping: [String: String] = [:]
     var stringsMapping: [String: String] = [:]
     var plurals: [AnyHashable: Any] = [:]
+    var downloaded: Bool = false
+    var downloadCompletions: [([Error]?) -> Void] = []
     
-    init(hash: String, sourceLanguage: String) {
-        self.manifestManager = ManifestManager.manifest(for: hash)
-        self.downloader = CrowdinMappingDownloader(languageResolver: self.manifestManager)
+    init(hash: String, sourceLanguage: String, organizationName: String?) {
+        self.manifestManager = ManifestManager.manifest(for: hash, sourceLanguage: sourceLanguage, organizationName: organizationName)
+        self.downloader = CrowdinMappingDownloader(manifestManager: self.manifestManager)
         self.download(hash: hash, sourceLanguage: sourceLanguage)
     }
     
@@ -35,7 +37,7 @@ public class CrowdinMappingManager: CrowdinMappingManagerProtocol {
         if manifestManager.downloaded == false {
             manifestManager.download { [weak self] in
                 guard let self = self else { return }
-                self.downloadMapping(hash: hash, sourceLanguage: sourceLanguage)                                       
+                self.downloadMapping(hash: hash, sourceLanguage: sourceLanguage)  
             }
         } else {
             downloadMapping(hash: hash, sourceLanguage: sourceLanguage)
@@ -43,10 +45,13 @@ public class CrowdinMappingManager: CrowdinMappingManagerProtocol {
     }
     
     func downloadMapping(hash: String, sourceLanguage: String) {
-        self.downloader.download(with: hash, for: sourceLanguage) { (strings, plurals, _) in
+        self.downloader.download(with: hash, for: sourceLanguage) { (strings, plurals, errors) in
             self.stringsMapping = strings ?? [:]
             self.plurals = plurals ?? [:]
             self.extractPluralsMapping()
+            self.downloaded = true
+            self.downloadCompletions.forEach({ $0(errors) })
+            self.downloadCompletions.removeAll()
         }
     }
     
